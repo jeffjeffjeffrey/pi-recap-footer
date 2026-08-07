@@ -6,6 +6,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 
 import { type RecapFooterConfig, DEFAULTS, loadConfig } from "./config.js";
+import { registerReflow } from "./reflow.js";
 import { registerSessionName } from "./session-name.js";
 import { buildRule, buildStamp, collapse } from "./stamp.js";
 import { THEME_NAMES } from "./themes.js";
@@ -70,6 +71,7 @@ ${lines}
 
 	registerSessionName(pi, getConfig);
 	registerTimestamps(pi, getConfig);
+	registerReflow(pi, getConfig);
 
 	pi.registerCommand("footer-themes", {
 		description: "Preview every recap-footer theme rule",

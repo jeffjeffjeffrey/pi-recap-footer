@@ -242,6 +242,111 @@ await test("transcript row renders tool name and failure", () => {
 
 console.log(`\n${passed} passed${process.exitCode ? ", with failures" : ""}`);
 
+// ----------------------------------------------------------------- reflow
+
+const reflow = await jiti.import(join(ROOT, "extensions/recap-footer/reflow.ts"));
+
+await test("detects every theme's own rule line", () => {
+  for (const name of themes.THEME_NAMES) {
+    const line = stamp.buildRule(name);
+    assert.equal(reflow.detectTheme(line), name, `failed to detect ${name}`);
+  }
+});
+
+await test("detects a rule at a non-default length", () => {
+  assert.equal(reflow.detectTheme(stamp.buildRuleAt("bugs", 61)), "bugs");
+  assert.equal(reflow.detectTheme(stamp.buildRuleAt("trains", 13)), "trains");
+});
+
+await test("does not mistake prose, links or short strings for a rule", () => {
+  for (const line of [
+    "You asked how to package the footer.",
+    "`Thu Aug 6, 2026 \u00b7 4:47 PM EDT`",
+    "- `PR` [x](https://example.com) \u2014 Thing.",
+    "\ud83d\udc1b\ud83e\udd8b",
+    "",
+    "\ud83d\udc1b\ud83e\udd8b \ud83d\udc1d",
+    "###### heading",
+  ]) {
+    assert.equal(reflow.detectTheme(line), undefined, `false positive: ${line}`);
+  }
+});
+
+await test("a hotdogs row is not misread as junkfood (shared glyph)", () => {
+  // hotdogs is all \ud83c\udf2d, which is also a junkfood glyph; only exact
+  // reconstruction disambiguates.
+  assert.equal(reflow.detectTheme(stamp.buildRule("hotdogs")), "hotdogs");
+});
+
+await test("emoji rules fill half the columns, text waves fill all of them", () => {
+  assert.equal(reflow.glyphsForWidth("bugs", 120), 60);
+  assert.equal(reflow.glyphsForWidth("bugs", 121), 60);
+  assert.equal(reflow.glyphsForWidth("braille", 120), 120);
+});
+
+await test("reflow stretches the rule and leaves the rest of the message alone", () => {
+  const body = [
+    "Some prose here.",
+    "",
+    stamp.buildRule("bugs"),
+    "",
+    "_`A summary.`_",
+    "",
+    "`Fri Aug 7, 2026 \u00b7 2:19 PM EDT`",
+  ].join("\n");
+  const out = reflow.reflowMarkdown(body, 200);
+  const lines = out.split("\n");
+  assert.equal([...lines[2]].length, 100, "rule should fill 200 columns");
+  assert.equal(reflow.detectTheme(lines[2]), "bugs", "still a bugs rule");
+  assert.equal(lines[0], "Some prose here.");
+  assert.equal(lines[4], "_`A summary.`_");
+  assert.equal(lines[6], "`Fri Aug 7, 2026 \u00b7 2:19 PM EDT`");
+});
+
+await test("reflow shrinks for a narrow terminal", () => {
+  const out = reflow.reflowMarkdown(stamp.buildRule("bugs"), 40);
+  assert.equal([...out].length, 20);
+});
+
+await test("rule rows inside fenced code blocks are left untouched", () => {
+  const quoted = stamp.buildRule("bugs");
+  const body = ["Example:", "", "```", quoted, "```", "", quoted].join("\n");
+  const out = reflow.reflowMarkdown(body, 200).split("\n");
+  assert.equal(out[3], quoted, "fenced row must not be stretched");
+  assert.equal([...out[6]].length, 100, "unfenced row must be stretched");
+});
+
+await test("tilde fences and nested backtick runs are handled", () => {
+  const quoted = stamp.buildRule("moon");
+  const body = ["~~~markdown", quoted, "~~~", quoted].join("\n");
+  const out = reflow.reflowMarkdown(body, 160).split("\n");
+  assert.equal(out[1], quoted);
+  assert.equal([...out[3]].length, 80);
+});
+
+await test("indented rows (list/code content) are left untouched", () => {
+  const quoted = `    ${stamp.buildRule("bugs")}`;
+  assert.equal(reflow.reflowMarkdown(quoted, 200), quoted);
+});
+
+await test("a text-wave theme keeps its backticks after reflow", () => {
+  const out = reflow.reflowMarkdown(stamp.buildRule("braille-teal"), 100);
+  assert.ok(out.startsWith("`") && out.endsWith("`"));
+  assert.equal([...out.slice(1, -1)].length, 100);
+  assert.equal(reflow.detectTheme(out), "braille-teal");
+});
+
+await test("reflow is a no-op at a nonsense width", () => {
+  const body = stamp.buildRule("bugs");
+  assert.equal(reflow.reflowMarkdown(body, 0), body);
+  assert.equal(reflow.reflowMarkdown(body, Number.NaN), body);
+});
+
+await test("reflow returns the identical string when nothing changes", () => {
+  const body = "No rule in here at all.";
+  assert.equal(reflow.reflowMarkdown(body, 200), body);
+});
+
 // ------------------------------------------------------- extension wiring
 
 const entry = await jiti.import(join(ROOT, "extensions/recap-footer/index.ts"), {
@@ -250,7 +355,7 @@ const entry = await jiti.import(join(ROOT, "extensions/recap-footer/index.ts"), 
 
 function mockPi() {
   const handlers = new Map();
-  const state = { entries: [], name: undefined, commands: [], renderers: [] };
+  const state = { entries: [], name: undefined, commands: [], renderers: [], transformers: [] };
   return {
     state,
     handlers,
@@ -266,6 +371,7 @@ function mockPi() {
     appendEntry: (type, data) => state.entries.push({ type, data }),
     registerEntryRenderer: (type) => state.renderers.push(type),
     registerCommand: (name) => state.commands.push(name),
+    registerMarkdownTransformer: (fn) => state.transformers.push(fn),
     setSessionName: (n) => (state.name = n),
     getSessionName: () => state.name,
   };
@@ -368,6 +474,45 @@ await test("tool and assistant turns append durable entries once enabled", async
   assert.equal(on.state.entries[0].type, "recap-timestamp");
   assert.equal(on.state.entries[0].data.tool, "bash");
   assert.equal(on.state.entries[1].data.tool, undefined);
+});
+
+await test("registered transformer reflows only finalized assistant markdown", async () => {
+  const [transform] = wired.state.transformers;
+  assert.ok(transform, "no markdown transformer registered");
+  const rule = stamp.buildRule("bugs");
+
+  const asAssistant = transform(rule, {
+    messageType: "assistant",
+    isStreaming: false,
+    availableWidth: 200,
+  });
+  assert.equal([...asAssistant].length, 100);
+
+  for (const context of [
+    { messageType: "assistant", isStreaming: true, availableWidth: 200 },
+    { messageType: "user", isStreaming: false, availableWidth: 200 },
+    { messageType: "assistant-thinking", isStreaming: false, availableWidth: 200 },
+  ]) {
+    assert.equal(transform(rule, context), rule, JSON.stringify(context));
+  }
+});
+
+await test("fillWidth:false disables reflow entirely", async () => {
+  const off = mockPi();
+  entry(off);
+  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "fillwidth-off.json");
+  await off.emit("session_start", {}, mockCtx);
+  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "empty-config.json");
+
+  const rule = stamp.buildRule("bugs");
+  assert.equal(
+    off.state.transformers[0](rule, {
+      messageType: "assistant",
+      isStreaming: false,
+      availableWidth: 200,
+    }),
+    rule,
+  );
 });
 
 console.log(`${passed} passed total${process.exitCode ? ", with failures" : ""}`);

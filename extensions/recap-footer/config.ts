@@ -14,6 +14,11 @@ export interface RecapFooterConfig {
 	injectRule: boolean;
 	/** IANA zone for the stamp, or `"system"` for the host's local zone. */
 	timeZone: string;
+	/**
+	 * Stretch the rule line to fill the terminal on render, instead of leaving it
+	 * at its natural 40 glyphs / 80 columns. Display-only, and re-runs on resize.
+	 */
+	fillWidth: boolean;
 	/** Pin every session to one theme instead of deriving it from the session id. */
 	theme?: string;
 	/** Derive the session name from the first footer summary. */
@@ -42,6 +47,7 @@ export interface RecapFooterConfig {
 export const DEFAULTS: RecapFooterConfig = {
 	injectRule: false,
 	timeZone: "system",
+	fillWidth: true,
 	sessionName: { enabled: true, mode: "first", maxLength: 72 },
 	timestamps: {
 		tools: false,

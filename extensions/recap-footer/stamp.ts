@@ -81,10 +81,10 @@ export function pickTheme(seed: string): string {
 	return THEME_NAMES[index] as string;
 }
 
-function buildTrain(): string {
+function buildTrain(glyphs: number): string {
 	// Fresh cars on every render; the theme itself stays fixed.
 	const body: string[] = [];
-	for (let i = 0; i < EMOJI_WIDTH - 2; i++) {
+	for (let i = 0; i < Math.max(0, glyphs - 2); i++) {
 		const pool = Math.random() < TRAIN_GAG_ODDS ? TRAIN_GAGS : TRAIN_CARS;
 		body.push(pool[Math.floor(Math.random() * pool.length)] as string);
 	}
@@ -97,18 +97,33 @@ function repeatTo(units: string[], width: number): string {
 	return row.slice(0, width).join("");
 }
 
-export function buildRule(theme: string): string {
-	if (theme === "trains") return buildTrain();
+/** Natural glyph count for a theme: 40 double-width emoji, or 80 text cells. */
+export function naturalGlyphs(theme: string): number {
+	return TEXT_THEMES[theme] ? TEXT_WIDTH : EMOJI_WIDTH;
+}
+
+/**
+ * A rule line of exactly `glyphs` glyphs.
+ *
+ * Text themes keep their backticks, which the markdown renderer consumes — the
+ * visible row is `glyphs` columns either way.
+ */
+export function buildRuleAt(theme: string, glyphs: number): string {
+	if (theme === "trains") return buildTrain(glyphs);
 
 	const text = TEXT_THEMES[theme];
 	if (text) {
-		const row = repeatTo([...text.unit], TEXT_WIDTH);
+		const row = repeatTo([...text.unit], glyphs);
 		return text.teal ? `\`${row}\`` : row;
 	}
 
 	const emoji = EMOJI_THEMES[theme];
 	if (!emoji) throw new Error(`unknown theme: ${theme}`);
-	return repeatTo([...emoji], EMOJI_WIDTH);
+	return repeatTo([...emoji], glyphs);
+}
+
+export function buildRule(theme: string): string {
+	return buildRuleAt(theme, naturalGlyphs(theme));
 }
 
 export function collapse(text: string, limit = 300): string {

@@ -57,9 +57,23 @@ visual identity for its whole life — across compaction, context loss, and resu
 collisions are expected.
 
 Every glyph avoids U+FE0F variation selectors, ZWJ sequences, and text-default
-presentation, so rows never render ragged. Emoji rules are 40 glyphs (~80
-columns, matching pi's `<hr>`); text waves are 80 characters. `trains`
-re-randomizes its cars on every render.
+presentation, so rows never render ragged. `trains` re-randomizes its cars on
+every render.
+
+## Full-width rules
+
+With `fillWidth` (default on), the rule stretches to fill the terminal and
+**re-flows when you resize the window**, via `registerMarkdownTransformer`.
+
+This is display-only. The stored message and the model's context keep the
+canonical row — 40 double-width emoji, or 80 text cells — so copy-paste, `-p`
+output, RPC, and shared transcripts stay portable at 80 columns.
+
+Rule rows inside fenced code blocks are deliberately left alone: docs and
+transcripts routinely quote a rule as an example, and stretching those would
+corrupt the thing being shown. Rows are identified by rebuilding each candidate
+line at its observed length and comparing — set membership would be ambiguous,
+since themes share glyphs (`🌭` is in both `hotdogs` and `junkfood`).
 
 Run `/footer-themes` to preview the catalog, `/footer-stamp` to see the current
 session's values.
@@ -84,6 +98,7 @@ project (layered on top).
   "injectRule": false,     // append RULE.md to the system prompt.
                            // leave false if RULE.md is already in your AGENTS.md
   "timeZone": "system",    // or an IANA zone, e.g. "America/New_York"
+  "fillWidth": true,       // stretch the rule to the terminal width, reflowing on resize
   "theme": null,           // pin one theme instead of deriving it per session
   "sessionName": {
     "enabled": true,
