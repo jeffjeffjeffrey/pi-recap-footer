@@ -32,10 +32,10 @@ calls. Its first visible appearance must be the final footer.
 
 _`One-line past-tense summary of what was asked, with enough project context to re-orient.`_
 
-- `PR` [ml-taxonomy#7697](https://github.com/Shopify/ml-taxonomy/pull/7697) — Trim normalization in taxonomy import.
-- `Run` [oasis 019d4fff](https://oasis.shopify.io/runs/019d4fff546f1f651c23) — v3 embedding eval sweep.
+- `PR` [repo#7697](https://github.com/example/repo/pull/7697) — Trim normalization in taxonomy import.
+- `Issue` [repo#412](https://github.com/example/repo/issues/412) — Flaky checkout test on CI.
 
-`Wed Aug 5, 2026 · 4:16 PM EDT`
+`Wed Aug 5, 2026 · 4:16 PM EDT` _(worked for 3m 24s)_
 ```
 
 Blank line between the rule and the summary, and between the summary and the
@@ -76,7 +76,19 @@ the list entirely when nothing linkable exists.
 ## The timestamp
 
 Last line, on its own, from `stamp`, wrapped in a plain code span so it renders
-teal and non-italic: `` `Wed Aug 5, 2026 · 4:16 PM EDT` ``. It is when **the
-request was sent**, not "now" — never UTC, never relative.
+teal and non-italic: `` `Wed Aug 5, 2026 · 4:16 PM EDT` ``. Never UTC, never
+relative. Write it verbatim and add nothing to it.
+
+The extension rewrites this line when the message finalises, replacing it with
+the moment the answer actually landed and how long the turn took:
+
+```markdown
+`Wed Aug 5, 2026 · 4:19 PM EDT` _(worked for 3m 24s)_
+```
+
+So do not try to compute a duration or a "now" yourself — you cannot know
+either, and anything you invent gets overwritten. Just emit the `stamp` you were
+given; it is also the correct fallback in any harness where the extension is not
+running.
 
 If the stamp is marked `(approx: no session timestamp)`, keep that marker.

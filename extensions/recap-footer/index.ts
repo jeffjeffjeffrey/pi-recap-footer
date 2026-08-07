@@ -7,6 +7,7 @@ import { Text } from "@earendil-works/pi-tui";
 
 import { type RecapFooterConfig, DEFAULTS, loadConfig } from "./config.js";
 import { registerReflow } from "./reflow.js";
+import { registerRenderTime } from "./render-time.js";
 import { registerSessionName } from "./session-name.js";
 import { buildRule, buildStamp, collapse } from "./stamp.js";
 import { THEME_NAMES } from "./themes.js";
@@ -72,6 +73,9 @@ ${lines}
 	registerSessionName(pi, getConfig);
 	registerTimestamps(pi, getConfig);
 	registerReflow(pi, getConfig);
+	// After session-name: that reads the summary line, which this never touches,
+	// but keeping the rewrite last means later handlers see the final text.
+	registerRenderTime(pi, getConfig);
 
 	pi.registerCommand("footer-themes", {
 		description: "Preview every recap-footer theme rule",

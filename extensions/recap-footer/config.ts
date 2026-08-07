@@ -19,6 +19,17 @@ export interface RecapFooterConfig {
 	 * at its natural 40 glyphs / 80 columns. Display-only, and re-runs on resize.
 	 */
 	fillWidth: boolean;
+	/** What the footer's closing timestamp means. */
+	timestamp: {
+		/**
+		 * `"render"` — when the answer landed, with how long the turn took. The
+		 * extension rewrites the line at `message_end`.
+		 * `"ask"` — when the request was sent, left exactly as the model wrote it.
+		 */
+		mode: "render" | "ask";
+		/** Append `_(worked for 3m 24s)_`. Only applies to `mode: "render"`. */
+		showDuration: boolean;
+	};
 	/** Pin every session to one theme instead of deriving it from the session id. */
 	theme?: string;
 	/** Derive the session name from the first footer summary. */
@@ -48,6 +59,7 @@ export const DEFAULTS: RecapFooterConfig = {
 	injectRule: false,
 	timeZone: "system",
 	fillWidth: true,
+	timestamp: { mode: "render", showDuration: true },
 	sessionName: { enabled: true, mode: "first", maxLength: 72 },
 	timestamps: {
 		tools: false,

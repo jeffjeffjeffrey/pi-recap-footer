@@ -7,10 +7,10 @@ Every assistant response ends with a recap footer:
 
 _`You asked how to view GitHub versions of Meteorite PRs and add reviewers.`_
 
-- `PR` [ml-taxonomy#7697](https://github.com/Shopify/ml-taxonomy/pull/7697) — Trim normalization.
-- `Run` [oasis 019d4fff](https://oasis.shopify.io/runs/019d4fff546f1f651c23) — v3 eval sweep.
+- `PR` [repo#7697](https://github.com/example/repo/pull/7697) — Trim normalization.
+- `Issue` [repo#412](https://github.com/example/repo/issues/412) — Flaky checkout test on CI.
 
-`Thu Aug 6, 2026 · 4:47 PM EDT`
+`Thu Aug 6, 2026 · 4:47 PM EDT` _(worked for 3m 24s)_
 ```
 
 Built for running **many agent sessions in parallel** and reading the answers
@@ -42,12 +42,25 @@ timestamp, so an `assistant` row renders the same time a second time directly
 beneath it. Turn on `timestamps.tools` if you want to see when each tool ran —
 that is information the footer genuinely does not carry.
 
-## Why the timestamp is trustworthy
+## The timestamp
 
-It is the time **the request was sent**, read from the pi session JSONL — which
-records a true ISO timestamp for every user message. Resume a session six months
-later and the footer still says when you actually asked. It is not render time
-and it is never UTC.
+By default (`timestamp.mode: "render"`) it is **when the answer landed**, with
+how long the turn took — measured from your submit to the message finalising:
+
+```
+`Thu Aug 6, 2026 · 4:47 PM EDT` _(worked for 3m 24s)_
+```
+
+The model cannot know either value while it is writing, so the extension
+rewrites the line at `message_end` — once, persistently. Not in the markdown
+transformer: that re-runs on every terminal resize, which would make "now" jump
+each time you changed the window size.
+
+Set `timestamp.mode: "ask"` to keep the original behaviour instead — the time
+**the request was sent**, read from the pi session JSONL, which records a true
+ISO timestamp for every user message. Resume a session six months later and it
+still says when you actually asked. Either way it is local time, never UTC,
+never relative.
 
 ## Why the theme is stable
 
@@ -99,6 +112,10 @@ project (layered on top).
                            // leave false if RULE.md is already in your AGENTS.md
   "timeZone": "system",    // or an IANA zone, e.g. "America/New_York"
   "fillWidth": true,       // stretch the rule to the terminal width, reflowing on resize
+  "timestamp": {
+    "mode": "render",      // "render" = when the answer landed; "ask" = when you sent it
+    "showDuration": true   // append _(worked for 3m 24s)_
+  },
   "theme": null,           // pin one theme instead of deriving it per session
   "sessionName": {
     "enabled": true,

@@ -347,6 +347,99 @@ await test("reflow returns the identical string when nothing changes", () => {
   assert.equal(reflow.reflowMarkdown(body, 200), body);
 });
 
+// ------------------------------------------------------------ render time
+
+const rt = await jiti.import(join(ROOT, "extensions/recap-footer/render-time.ts"));
+
+await test("duration formatting across the ranges", () => {
+  const cases = [
+    [0, "<1s"], [400, "<1s"], [1000, "1s"], [45_000, "45s"], [59_400, "59s"],
+    [60_000, "1m"], [204_000, "3m 24s"], [3_540_000, "59m"],
+    [3_600_000, "1h"], [4_920_000, "1h 22m"],
+  ];
+  for (const [ms, expected] of cases) {
+    assert.equal(rt.formatDuration(ms), expected, `${ms}ms`);
+  }
+  assert.equal(rt.formatDuration(-1), "");
+  assert.equal(rt.formatDuration(Number.NaN), "");
+});
+
+const FOOTER = [
+  "Some answer body.",
+  "",
+  stamp.buildRule("bugs"),
+  "",
+  "_`You asked a thing.`_",
+  "",
+  "- `PR` [x](https://example.com) \u2014 Thing.",
+  "",
+  "`Fri Aug 7, 2026 \u00b7 2:19 PM EDT`",
+].join("\n");
+
+await test("rewrites the stamp to render time with a duration", () => {
+  const out = rt.rewriteFooterTimestamp(FOOTER, {
+    renderedAt: new Date("2026-08-07T18:22:24Z"),
+    durationMs: 204_000,
+    timeZone: "America/New_York",
+  });
+  const last = out.split("\n").at(-1);
+  assert.equal(last, "`Fri Aug 7, 2026 \u00b7 2:22 PM EDT` _(worked for 3m 24s)_");
+  // everything above the stamp is untouched
+  assert.equal(out.split("\n").slice(0, -1).join("\n"), FOOTER.split("\n").slice(0, -1).join("\n"));
+});
+
+await test("omits the parenthetical when duration is unknown or disabled", () => {
+  const noDur = rt.rewriteFooterTimestamp(FOOTER, {
+    renderedAt: new Date("2026-08-07T18:22:24Z"), timeZone: "America/New_York",
+  });
+  assert.equal(noDur.split("\n").at(-1), "`Fri Aug 7, 2026 \u00b7 2:22 PM EDT`");
+  const off = rt.rewriteFooterTimestamp(FOOTER, {
+    renderedAt: new Date("2026-08-07T18:22:24Z"), durationMs: 204_000,
+    timeZone: "America/New_York", showDuration: false,
+  });
+  assert.equal(off.split("\n").at(-1), "`Fri Aug 7, 2026 \u00b7 2:22 PM EDT`");
+});
+
+await test("leaves a message with no footer completely alone", () => {
+  for (const text of [
+    "Just a plain answer with no footer.",
+    "Ends in a code span `but not a stamp`",
+    "`Thu Aug 6, 2026` missing the time part",
+    "",
+  ]) {
+    assert.equal(
+      rt.rewriteFooterTimestamp(text, { renderedAt: new Date(), durationMs: 1000 }),
+      text,
+      JSON.stringify(text),
+    );
+  }
+});
+
+await test("does not touch a stamp that is not the last line", () => {
+  const mid = "`Fri Aug 7, 2026 \u00b7 2:19 PM EDT`\n\nmore text after";
+  assert.equal(rt.rewriteFooterTimestamp(mid, { renderedAt: new Date() }), mid);
+});
+
+await test("rewriting is idempotent", () => {
+  const opts = { renderedAt: new Date("2026-08-07T18:22:24Z"), durationMs: 204_000, timeZone: "America/New_York" };
+  const once = rt.rewriteFooterTimestamp(FOOTER, opts);
+  const twice = rt.rewriteFooterTimestamp(once, opts);
+  assert.equal(twice, once);
+});
+
+await test("preserves the approx marker for a session with no timestamp", () => {
+  const approx = "body\n\n`Fri Aug 7, 2026 \u00b7 2:19 PM EDT (approx: no session timestamp)`";
+  const out = rt.rewriteFooterTimestamp(approx, {
+    renderedAt: new Date("2026-08-07T18:22:24Z"), durationMs: 5000, timeZone: "America/New_York",
+  });
+  // the rewrite supplies a real render time, so the approx marker is correctly dropped
+  assert.equal(out.split("\n").at(-1), "`Fri Aug 7, 2026 \u00b7 2:22 PM EDT` _(worked for 5s)_");
+});
+
+await test("the reflow transformer never mistakes a stamp line for a rule", () => {
+  assert.equal(reflow.detectTheme("`Fri Aug 7, 2026 \u00b7 2:22 PM EDT` _(worked for 3m 24s)_"), undefined);
+});
+
 // ------------------------------------------------------- extension wiring
 
 const entry = await jiti.import(join(ROOT, "extensions/recap-footer/index.ts"), {
@@ -513,6 +606,55 @@ await test("fillWidth:false disables reflow entirely", async () => {
     }),
     rule,
   );
+});
+
+await test("wired: message_end replaces the stamp with render time + duration", async () => {
+  const w = mockPi();
+  entry(w);
+  await w.emit("session_start", {}, mockCtx);
+  await w.emit("before_agent_start", { prompt: "do a thing", systemPrompt: "BASE" }, mockCtx);
+  await new Promise((r) => setTimeout(r, 1100)); // let real wall-clock time pass
+
+  const text = [stamp.buildRule("bugs"), "", "_`You asked a thing.`_", "", "`Fri Aug 7, 2026 \u00b7 2:19 PM EDT`"].join("\n");
+  const results = await w.emit(
+    "message_end",
+    { message: { role: "assistant", timestamp: Date.now(), content: [{ type: "text", text }] } },
+    mockCtx,
+  );
+  const replaced = results.find((r) => r && r.message);
+  assert.ok(replaced, "no handler returned a replacement message");
+  const last = replaced.message.content[0].text.split("\n").at(-1);
+  assert.match(last, /^`[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d{4} \u00b7 .*` _\(worked for \d+s\)_$/, last);
+  assert.notEqual(last, "`Fri Aug 7, 2026 \u00b7 2:19 PM EDT`", "stamp should have been replaced");
+});
+
+await test("wired: a tool-calling assistant message (no footer) is left alone", async () => {
+  const w = mockPi();
+  entry(w);
+  await w.emit("session_start", {}, mockCtx);
+  const results = await w.emit(
+    "message_end",
+    { message: { role: "assistant", timestamp: Date.now(), content: [{ type: "text", text: "Let me check that." }] } },
+    mockCtx,
+  );
+  assert.ok(!results.some((r) => r && r.message), "should not replace a footerless message");
+});
+
+await test("wired: timestamp.mode 'ask' disables the rewrite entirely", async () => {
+  const w = mockPi();
+  entry(w);
+  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "timestamp-ask.json");
+  await w.emit("session_start", {}, mockCtx);
+  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "empty-config.json");
+
+  await w.emit("before_agent_start", { prompt: "x", systemPrompt: "B" }, mockCtx);
+  const text = ["_`Summary.`_", "", "`Fri Aug 7, 2026 \u00b7 2:19 PM EDT`"].join("\n");
+  const results = await w.emit(
+    "message_end",
+    { message: { role: "assistant", timestamp: Date.now(), content: [{ type: "text", text }] } },
+    mockCtx,
+  );
+  assert.ok(!results.some((r) => r && r.message), "mode:'ask' must leave the stamp as written");
 });
 
 console.log(`${passed} passed total${process.exitCode ? ", with failures" : ""}`);
