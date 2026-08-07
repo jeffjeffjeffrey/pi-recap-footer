@@ -32,10 +32,15 @@ call** — the summary has already been written. `mode: "first"` freezes on the
 opening summary ("why this session started") and never clobbers a name you set
 with `/name`.
 
-**3. Transcript timestamps.** Dim rows after each tool execution and assistant
-turn, so scrolling back tells you *when* things happened. These are durable
+**3. Transcript timestamps (opt-in).** Dim rows after each tool execution and
+assistant turn, so scrolling back tells you *when* things happened. Durable
 session entries (`appendEntry` + `registerEntryRenderer`), not `ui.notify`
 calls: they survive scrollback and resume, and never enter the model's context.
+
+**Off by default.** The footer already ends every response with the request
+timestamp, so an `assistant` row renders the same time a second time directly
+beneath it. Turn on `timestamps.tools` if you want to see when each tool ran —
+that is information the footer genuinely does not carry.
 
 ## Why the timestamp is trustworthy
 
@@ -85,9 +90,9 @@ project (layered on top).
     "mode": "first",       // "first" freezes on the opening summary; "latest" tracks
     "maxLength": 72
   },
-  "timestamps": {
-    "tools": true,
-    "assistant": true,
+  "timestamps": {          // all off by default; `assistant` duplicates the footer stamp
+    "tools": false,
+    "assistant": false,
     "user": false,
     "format": { "month": "short", "day": "numeric", "hour": "numeric", "minute": "2-digit" }
   }

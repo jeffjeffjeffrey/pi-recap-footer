@@ -23,7 +23,13 @@ export interface RecapFooterConfig {
 		mode: "first" | "latest";
 		maxLength: number;
 	};
-	/** Dim timestamp rows in the transcript. */
+	/**
+	 * Dim timestamp rows in the transcript. All off by default.
+	 *
+	 * `assistant` in particular is redundant with the footer itself: every
+	 * response already ends with the request timestamp, so an assistant row
+	 * renders a second time immediately below it.
+	 */
 	timestamps: {
 		tools: boolean;
 		assistant: boolean;
@@ -38,8 +44,8 @@ export const DEFAULTS: RecapFooterConfig = {
 	timeZone: "system",
 	sessionName: { enabled: true, mode: "first", maxLength: 72 },
 	timestamps: {
-		tools: true,
-		assistant: true,
+		tools: false,
+		assistant: false,
 		user: false,
 		format: {
 			month: "short",

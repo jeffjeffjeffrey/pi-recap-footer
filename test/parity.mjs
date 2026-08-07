@@ -225,7 +225,7 @@ await test("global config path honours PI_RECAP_FOOTER_CONFIG", () => {
 await test("loadConfig falls back to defaults for absent keys", () => {
   const loaded = config.loadConfig("/tmp/nowhere", false);
   assert.equal(loaded.sessionName.enabled, true);
-  assert.equal(loaded.timestamps.tools, true);
+  assert.equal(loaded.timestamps.tools, false);
   assert.equal(loaded.timeZone, "system");
 });
 
@@ -340,7 +340,7 @@ await test("a later turn does not rename a frozen session", async () => {
   assert.equal(wired.state.name, "You asked how to package the recap footer");
 });
 
-await test("tool and assistant turns append durable timestamp entries", async () => {
+await test("transcript timestamps are off by default", async () => {
   wired.state.entries.length = 0;
   await wired.emit("tool_execution_end", { toolName: "bash", isError: false }, mockCtx);
   await wired.emit(
@@ -348,10 +348,26 @@ await test("tool and assistant turns append durable timestamp entries", async ()
     { message: { role: "assistant", timestamp: Date.now() } },
     mockCtx,
   );
-  assert.equal(wired.state.entries.length, 2);
-  assert.equal(wired.state.entries[0].type, "recap-timestamp");
-  assert.equal(wired.state.entries[0].data.tool, "bash");
-  assert.equal(wired.state.entries[1].data.tool, undefined);
+  assert.equal(wired.state.entries.length, 0, "should be opt-in");
+});
+
+await test("tool and assistant turns append durable entries once enabled", async () => {
+  const on = mockPi();
+  entry(on);
+  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "timestamps-on.json");
+  await on.emit("session_start", {}, mockCtx);
+  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "empty-config.json");
+
+  await on.emit("tool_execution_end", { toolName: "bash", isError: false }, mockCtx);
+  await on.emit(
+    "turn_end",
+    { message: { role: "assistant", timestamp: Date.now() } },
+    mockCtx,
+  );
+  assert.equal(on.state.entries.length, 2);
+  assert.equal(on.state.entries[0].type, "recap-timestamp");
+  assert.equal(on.state.entries[0].data.tool, "bash");
+  assert.equal(on.state.entries[1].data.tool, undefined);
 });
 
 console.log(`${passed} passed total${process.exitCode ? ", with failures" : ""}`);
