@@ -45,8 +45,9 @@ message while the theme stays fixed.
 ## Inspecting
 
 ```bash
-~/.pi/agent/bin/ask-stamp --themes   # print every theme and its row
-~/.pi/agent/bin/ask-stamp            # stamp / ask / theme / rule for this session
+/footer-themes        # preview every theme and its row
+/footer-themes bug    # filter by name
+/footer-stamp         # stamp / theme / name / rule for this session
 ```
 
 ## The catalog
