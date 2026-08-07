@@ -1,0 +1,4 @@
+{"type":"session","version":1,"id":"019fd856-7173-7f06-8be0-5d7fce08f7aa","timestamp":"2026-08-06T18:29:31.635Z","cwd":"/Users/x"}
+{"type":"message","id":"a","timestamp":"2026-08-06T18:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"first question"}]}}
+{"type":"message","id":"b","timestamp":"2026-08-06T18:05:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"an answer"}]}}
+{"type":"message","id":"c","timestamp":"2026-08-06T18:30:00.000Z","message":{"role":"user","content":[{"type":"text","text":"second question,   this is\nthe latest one"}]}}
