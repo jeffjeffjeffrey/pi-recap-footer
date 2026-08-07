@@ -78,6 +78,20 @@ function merge<T>(base: T, patch: unknown): T {
 export const CONFIG_FILENAME = "recap-footer.json";
 
 /**
+ * Absolute path to the global config file.
+ *
+ * `PI_RECAP_FOOTER_CONFIG` overrides it. Tests set that to a fixture so a run
+ * never depends on the developer's own `~/.pi/agent/recap-footer.json` — which
+ * would make results differ machine to machine.
+ */
+export function globalConfigPath(): string {
+	return (
+		process.env.PI_RECAP_FOOTER_CONFIG ??
+		join(homedir(), ".pi", "agent", CONFIG_FILENAME)
+	);
+}
+
+/**
  * Global config, then project config layered on top. Project config is only
  * honoured for trusted projects — it can change what reaches the model.
  */
@@ -85,8 +99,7 @@ export function loadConfig(
 	cwd: string,
 	projectTrusted: boolean,
 ): RecapFooterConfig {
-	const globalPath = join(homedir(), ".pi", "agent", CONFIG_FILENAME);
-	let config = merge(DEFAULTS, readJson(globalPath));
+	let config = merge(DEFAULTS, readJson(globalConfigPath()));
 
 	if (projectTrusted) {
 		const projectPath = join(cwd, CONFIG_DIR_NAME, CONFIG_FILENAME);

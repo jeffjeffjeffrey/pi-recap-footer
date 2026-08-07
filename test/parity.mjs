@@ -37,6 +37,10 @@ const config = await jiti.import(join(ROOT, "extensions/recap-footer/config.ts")
 
 const fixture = JSON.parse(readFileSync(join(HERE, "fixture.json"), "utf8"));
 
+// Hermetic: never read the developer's own ~/.pi/agent/recap-footer.json, or the
+// suite passes or fails depending on whose machine it runs on.
+process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "empty-config.json");
+
 let passed = 0;
 // Must await: several cases below are async, and a bare `fn()` would turn a
 // rejected assertion into an unhandled rejection that still counted as a pass.
@@ -212,6 +216,17 @@ await test("session name truncates on a word boundary", () => {
 
 await test("defaults do not inject the rule (AGENTS.md may already have it)", () => {
   assert.equal(config.DEFAULTS.injectRule, false);
+});
+
+await test("global config path honours PI_RECAP_FOOTER_CONFIG", () => {
+  assert.equal(config.globalConfigPath(), join(HERE, "empty-config.json"));
+});
+
+await test("loadConfig falls back to defaults for absent keys", () => {
+  const loaded = config.loadConfig("/tmp/nowhere", false);
+  assert.equal(loaded.sessionName.enabled, true);
+  assert.equal(loaded.timestamps.tools, true);
+  assert.equal(loaded.timeZone, "system");
 });
 
 await test("transcript row renders tool name and failure", () => {
