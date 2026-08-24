@@ -17,7 +17,7 @@ each turn. It contains four tab-separated lines:
 
 | Line | Use |
 |------|-----|
-| `stamp` | True timestamp of the latest request, read from the pi session log — correct even when a session is resumed months later. Use verbatim. |
+| `stamp` | A ready-formatted timestamp. Emit it verbatim; see **The timestamp** below for what the line ends up meaning. |
 | `ask` | First 300 chars of that request, for reference. |
 | `theme` | This session's emoji theme, derived from `sha256(session_id)`. Stable for the life of the conversation, including across compaction and resume. |
 | `rule` | The ready-to-paste rule line. Paste verbatim — including backticks if present. |
@@ -55,9 +55,6 @@ links. The whole block is separated from the body by the rule line only — no
   contain a backtick, drop the code span and use plain `_italics_`.
 - Never expand it into a summary of your own work. It describes the request only.
 
-This line is also what names the session, so it should read well on its own in a
-session list.
-
 ## The link list
 
 Include every linkable artifact in play in the thread — not only ones touched in
@@ -79,8 +76,9 @@ Last line, on its own, from `stamp`, wrapped in a plain code span so it renders
 teal and non-italic: `` `Wed Aug 5, 2026 · 4:16 PM EDT` ``. Never UTC, never
 relative. Write it verbatim and add nothing to it.
 
-The extension rewrites this line when the message finalises, replacing it with
-the moment the answer actually landed and how long the turn took:
+The line always means **when the answer landed, and how long the turn took** —
+there is one definition and nothing to configure. The extension rewrites it when
+the message finalises:
 
 ```markdown
 `Wed Aug 5, 2026 · 4:19 PM EDT` _(worked for 3m 24s)_

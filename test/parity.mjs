@@ -9,30 +9,19 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { loadJiti } from "./jiti.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 
-// pi loads extensions through jiti; use the same loader so `.js` specifiers
-// that point at `.ts` sources resolve exactly as they will at runtime.
-const require = createRequire(import.meta.url);
-const jitiPath =
-  process.env.PI_JITI ??
-  join(process.env.HOME, ".pi/pkg/pi-0.84.1/node_modules/jiti/lib/jiti.mjs");
-const { createJiti } = await import(jitiPath);
-const jiti = createJiti(import.meta.url, { interopDefault: true });
+// The same loader pi uses, found at run time rather than pinned; see jiti.mjs.
+const jiti = await loadJiti(import.meta.url);
 
 const stamp = await jiti.import(join(ROOT, "extensions/recap-footer/stamp.ts"));
-const sessionName = await jiti.import(
-  join(ROOT, "extensions/recap-footer/session-name.ts"),
-);
 const themes = await jiti.import(join(ROOT, "extensions/recap-footer/themes.ts"));
-const timestamps = await jiti.import(
-  join(ROOT, "extensions/recap-footer/timestamps.ts"),
-);
 const config = await jiti.import(join(ROOT, "extensions/recap-footer/config.ts"));
 
 const fixture = JSON.parse(readFileSync(join(HERE, "fixture.json"), "utf8"));
@@ -164,54 +153,6 @@ await test("buildStamp reads the request time out of a session JSONL", () => {
   assert.equal(result.ask, "second question, this is the latest one");
 });
 
-// ------------------------------------------------------------ session name
-
-await test("extracts the backticked summary line", () => {
-  const body = [
-    "Some body text with _italics_ in it.",
-    "",
-    "🐛🦋🐝",
-    "",
-    "_`You asked how to package the footer.`_",
-    "",
-    "- `PR` [x](https://example.com) — Thing.",
-    "",
-    "`Thu Aug 6, 2026 · 4:47 PM EDT`",
-  ].join("\n");
-  assert.equal(
-    sessionName.extractSummary(body),
-    "You asked how to package the footer.",
-  );
-});
-
-await test("falls back to plain italics when the summary has a backtick", () => {
-  const body = "🐛\n\n_You asked about the ask-stamp script._\n\n`Thu Aug 6, 2026 · 4:47 PM EDT`";
-  assert.equal(
-    sessionName.extractSummary(body),
-    "You asked about the ask-stamp script.",
-  );
-});
-
-await test("returns undefined when there is no footer", () => {
-  assert.equal(sessionName.extractSummary("just a plain answer"), undefined);
-});
-
-await test("session name drops the trailing period", () => {
-  assert.equal(
-    sessionName.toSessionName("You asked about Meteorite reviewers.", 72),
-    "You asked about Meteorite reviewers",
-  );
-});
-
-await test("session name truncates on a word boundary", () => {
-  const long =
-    "You asked how to view GitHub versions of Meteorite PRs and add reviewers by handle.";
-  const out = sessionName.toSessionName(long, 40);
-  assert.ok(out.length <= 40, `too long: ${out.length}`);
-  assert.ok(out.endsWith("…"));
-  assert.ok(!out.includes("  "));
-});
-
 // ------------------------------------------------------------------ config
 
 await test("defaults do not inject the rule (AGENTS.md may already have it)", () => {
@@ -224,20 +165,19 @@ await test("global config path honours PI_RECAP_FOOTER_CONFIG", () => {
 
 await test("loadConfig falls back to defaults for absent keys", () => {
   const loaded = config.loadConfig("/tmp/nowhere", false);
-  assert.equal(loaded.sessionName.enabled, true);
-  assert.equal(loaded.timestamps.tools, false);
   assert.equal(loaded.timeZone, "system");
+  assert.equal(loaded.fillWidth, true);
+  assert.equal(loaded.injectRule, false);
 });
 
-await test("transcript row renders tool name and failure", () => {
-  const cfg = config.DEFAULTS;
-  const at = Date.UTC(2026, 7, 6, 20, 47);
-  assert.match(timestamps.formatRow({ timestamp: at, tool: "bash" }, cfg), /· bash$/);
-  assert.match(
-    timestamps.formatRow({ timestamp: at, tool: "bash", failed: true }, cfg),
-    /· bash \(failed\)$/,
-  );
-  assert.ok(!timestamps.formatRow({ timestamp: at }, cfg).includes("·"));
+await test("config surface is only the documented keys", () => {
+  // Guards against a removed feature's settings quietly coming back: the
+  // footer's timestamp has one definition and is deliberately not tunable.
+  assert.deepEqual(Object.keys(config.DEFAULTS).sort(), [
+    "fillWidth",
+    "injectRule",
+    "timeZone",
+  ]);
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ", with failures" : ""}`);
@@ -388,16 +328,11 @@ await test("rewrites the stamp to render time with a duration", () => {
   assert.equal(out.split("\n").slice(0, -1).join("\n"), FOOTER.split("\n").slice(0, -1).join("\n"));
 });
 
-await test("omits the parenthetical when duration is unknown or disabled", () => {
+await test("omits the parenthetical only when the duration is unknown", () => {
   const noDur = rt.rewriteFooterTimestamp(FOOTER, {
     renderedAt: new Date("2026-08-07T18:22:24Z"), timeZone: "America/New_York",
   });
   assert.equal(noDur.split("\n").at(-1), "`Fri Aug 7, 2026 \u00b7 2:22 PM EDT`");
-  const off = rt.rewriteFooterTimestamp(FOOTER, {
-    renderedAt: new Date("2026-08-07T18:22:24Z"), durationMs: 204_000,
-    timeZone: "America/New_York", showDuration: false,
-  });
-  assert.equal(off.split("\n").at(-1), "`Fri Aug 7, 2026 \u00b7 2:22 PM EDT`");
 });
 
 await test("leaves a message with no footer completely alone", () => {
@@ -482,14 +417,12 @@ const mockCtx = {
 await test("extension loads and registers its hooks", async () => {
   const pi = mockPi();
   entry(pi);
-  for (const event of [
-    "session_start",
-    "before_agent_start",
-    "tool_execution_end",
-    "turn_end",
-    "message_end",
-  ]) {
+  for (const event of ["session_start", "before_agent_start", "message_end"]) {
     assert.ok(pi.handlers.has(event), `missing handler: ${event}`);
+  }
+  // Transcript timestamps are gone, so nothing hooks tool or turn completion.
+  for (const event of ["tool_execution_end", "turn_end"]) {
+    assert.ok(!pi.handlers.has(event), `stale handler: ${event}`);
   }
   assert.deepEqual(pi.state.commands, ["footer-themes", "footer-stamp"]);
 });
@@ -514,7 +447,9 @@ await test("before_agent_start injects a hidden, correctly-themed context block"
   assert.equal(result.systemPrompt, undefined);
 });
 
-await test("assistant turn names the session from its footer summary", async () => {
+await test("the session name is left to whoever owns naming", async () => {
+  // Naming used to be derived from this summary line. It now belongs to a
+  // separate extension, so this one must never call setSessionName.
   const message = {
     role: "assistant",
     timestamp: Date.now(),
@@ -526,47 +461,18 @@ await test("assistant turn names the session from its footer summary", async () 
     ],
   };
   await wired.emit("message_end", { message }, mockCtx);
-  assert.equal(wired.state.name, "You asked how to package the recap footer");
+  assert.equal(wired.state.name, undefined);
 });
 
-await test("a later turn does not rename a frozen session", async () => {
-  const message = {
-    role: "assistant",
-    timestamp: Date.now(),
-    content: [{ type: "text", text: "_`You then asked something else entirely.`_" }],
-  };
-  await wired.emit("message_end", { message }, mockCtx);
-  assert.equal(wired.state.name, "You asked how to package the recap footer");
-});
-
-await test("transcript timestamps are off by default", async () => {
+await test("a turn never appends rows to the transcript", async () => {
+  // Only the two slash commands append entries.
   wired.state.entries.length = 0;
-  await wired.emit("tool_execution_end", { toolName: "bash", isError: false }, mockCtx);
   await wired.emit(
-    "turn_end",
-    { message: { role: "assistant", timestamp: Date.now() } },
+    "message_end",
+    { message: { role: "user", timestamp: Date.now(), content: "hi" } },
     mockCtx,
   );
-  assert.equal(wired.state.entries.length, 0, "should be opt-in");
-});
-
-await test("tool and assistant turns append durable entries once enabled", async () => {
-  const on = mockPi();
-  entry(on);
-  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "timestamps-on.json");
-  await on.emit("session_start", {}, mockCtx);
-  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "empty-config.json");
-
-  await on.emit("tool_execution_end", { toolName: "bash", isError: false }, mockCtx);
-  await on.emit(
-    "turn_end",
-    { message: { role: "assistant", timestamp: Date.now() } },
-    mockCtx,
-  );
-  assert.equal(on.state.entries.length, 2);
-  assert.equal(on.state.entries[0].type, "recap-timestamp");
-  assert.equal(on.state.entries[0].data.tool, "bash");
-  assert.equal(on.state.entries[1].data.tool, undefined);
+  assert.deepEqual(wired.state.entries, []);
 });
 
 await test("registered transformer reflows only finalized assistant markdown", async () => {
@@ -640,10 +546,13 @@ await test("wired: a tool-calling assistant message (no footer) is left alone", 
   assert.ok(!results.some((r) => r && r.message), "should not replace a footerless message");
 });
 
-await test("wired: timestamp.mode 'ask' disables the rewrite entirely", async () => {
+await test("wired: a retired setting cannot disable the rewrite", async () => {
+  // The stamp has one definition — when the answer landed, plus the duration.
+  // An old config carrying the removed `timestamp` block must be ignored
+  // rather than silently honoured.
   const w = mockPi();
   entry(w);
-  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "timestamp-ask.json");
+  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "legacy-config.json");
   await w.emit("session_start", {}, mockCtx);
   process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "empty-config.json");
 
@@ -654,7 +563,9 @@ await test("wired: timestamp.mode 'ask' disables the rewrite entirely", async ()
     { message: { role: "assistant", timestamp: Date.now(), content: [{ type: "text", text }] } },
     mockCtx,
   );
-  assert.ok(!results.some((r) => r && r.message), "mode:'ask' must leave the stamp as written");
+  const replaced = results.find((r) => r && r.message);
+  assert.ok(replaced, "a retired setting must not disable the rewrite");
+  assert.match(replaced.message.content[0].text.split("\n").at(-1), /_\(worked for /);
 });
 
 console.log(`${passed} passed total${process.exitCode ? ", with failures" : ""}`);

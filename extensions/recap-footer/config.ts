@@ -19,59 +19,14 @@ export interface RecapFooterConfig {
 	 * at its natural 40 glyphs / 80 columns. Display-only, and re-runs on resize.
 	 */
 	fillWidth: boolean;
-	/** What the footer's closing timestamp means. */
-	timestamp: {
-		/**
-		 * `"render"` — when the answer landed, with how long the turn took. The
-		 * extension rewrites the line at `message_end`.
-		 * `"ask"` — when the request was sent, left exactly as the model wrote it.
-		 */
-		mode: "render" | "ask";
-		/** Append `_(worked for 3m 24s)_`. Only applies to `mode: "render"`. */
-		showDuration: boolean;
-	};
 	/** Pin every session to one theme instead of deriving it from the session id. */
 	theme?: string;
-	/** Derive the session name from the first footer summary. */
-	sessionName: {
-		enabled: boolean;
-		/** `"first"` freezes on the opening summary; `"latest"` tracks the newest. */
-		mode: "first" | "latest";
-		maxLength: number;
-	};
-	/**
-	 * Dim timestamp rows in the transcript. All off by default.
-	 *
-	 * `assistant` in particular is redundant with the footer itself: every
-	 * response already ends with the request timestamp, so an assistant row
-	 * renders a second time immediately below it.
-	 */
-	timestamps: {
-		tools: boolean;
-		assistant: boolean;
-		user: boolean;
-		/** `Intl.DateTimeFormat` options for the transcript rows. */
-		format: Intl.DateTimeFormatOptions;
-	};
 }
 
 export const DEFAULTS: RecapFooterConfig = {
 	injectRule: false,
 	timeZone: "system",
 	fillWidth: true,
-	timestamp: { mode: "render", showDuration: true },
-	sessionName: { enabled: true, mode: "first", maxLength: 72 },
-	timestamps: {
-		tools: false,
-		assistant: false,
-		user: false,
-		format: {
-			month: "short",
-			day: "numeric",
-			hour: "numeric",
-			minute: "2-digit",
-		},
-	},
 };
 
 function readJson(path: string): Record<string, unknown> | undefined {

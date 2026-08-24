@@ -19,48 +19,40 @@ what can I click?" without scrolling up.
 
 ## What it does
 
-**1. The footer itself.** A `<recap-footer-context>` block is injected at the
-start of every turn with four values the model uses verbatim: the request
-timestamp, the request text, the session's theme, and a ready-to-paste rule
-line. It is `display: false`, so the first visible appearance of the footer is
-the final response — no tool call, no spoiler in the transcript.
+One thing. A `<recap-footer-context>` block is injected at the start of every
+turn with four values the model uses verbatim: a formatted timestamp, the
+request text, the session's theme, and a ready-to-paste rule line. It is
+`display: false`, so the first visible appearance of the footer is the final
+response — no tool call, no spoiler in the transcript.
 
-**2. Session naming, for free.** The footer's summary line is already a one-line
-past-tense description of the request, so it is reused as the session name via
-`setSessionName()`. Unlike LLM-based session namers, this costs **no extra model
-call** — the summary has already been written. `mode: "first"` freezes on the
-opening summary ("why this session started") and never clobbers a name you set
-with `/name`.
-
-**3. Transcript timestamps (opt-in).** Dim rows after each tool execution and
-assistant turn, so scrolling back tells you *when* things happened. Durable
-session entries (`appendEntry` + `registerEntryRenderer`), not `ui.notify`
-calls: they survive scrollback and resume, and never enter the model's context.
-
-**Off by default.** The footer already ends every response with the request
-timestamp, so an `assistant` row renders the same time a second time directly
-beneath it. Turn on `timestamps.tools` if you want to see when each tool ran —
-that is information the footer genuinely does not carry.
+That is the whole feature set, deliberately. Session naming and transcript
+timestamps used to live here too; both were removed rather than left switched
+off. Naming belongs to whichever extension you already use for it, and the
+footer's own stamp already tells you when a turn happened.
 
 ## The timestamp
 
-By default (`timestamp.mode: "render"`) it is **when the answer landed**, with
-how long the turn took — measured from your submit to the message finalising:
+It is **when the answer landed**, with how long the turn took — measured from
+your submit to the message finalising:
 
 ```
 `Thu Aug 6, 2026 · 4:47 PM EDT` _(worked for 3m 24s)_
 ```
+
+One definition, no modes. "When you asked" needs no separate setting because the
+duration already says how far back the request was, and a single fixed meaning is
+worth more than a configurable one on a line you read at a glance months later.
+Local time, never UTC, never relative.
 
 The model cannot know either value while it is writing, so the extension
 rewrites the line at `message_end` — once, persistently. Not in the markdown
 transformer: that re-runs on every terminal resize, which would make "now" jump
 each time you changed the window size.
 
-Set `timestamp.mode: "ask"` to keep the original behaviour instead — the time
-**the request was sent**, read from the pi session JSONL, which records a true
-ISO timestamp for every user message. Resume a session six months later and it
-still says when you actually asked. Either way it is local time, never UTC,
-never relative.
+The stamp the model is handed is the *request* time, read from the pi session
+JSONL. You normally never see it, since the rewrite replaces it — it is the
+fallback for harnesses where the extension is not running, and it is why the
+line is still correct (if duration-less) when a session is resumed months later.
 
 ## Why the theme is stable
 
@@ -112,27 +104,12 @@ project (layered on top).
                            // leave false if RULE.md is already in your AGENTS.md
   "timeZone": "system",    // or an IANA zone, e.g. "America/New_York"
   "fillWidth": true,       // stretch the rule to the terminal width, reflowing on resize
-  "timestamp": {
-    "mode": "render",      // "render" = when the answer landed; "ask" = when you sent it
-    "showDuration": true   // append _(worked for 3m 24s)_
-  },
-  "theme": null,           // pin one theme instead of deriving it per session
-  "sessionName": {
-    "enabled": true,
-    "mode": "first",       // "first" freezes on the opening summary; "latest" tracks
-    "maxLength": 72
-  },
-  "timestamps": {          // all off by default; `assistant` duplicates the footer stamp
-    "tools": false,
-    "assistant": false,
-    "user": false,
-    "format": { "month": "short", "day": "numeric", "hour": "numeric", "minute": "2-digit" }
-  }
+  "theme": null            // pin one theme instead of deriving it per session
 }
 ```
 
-Every part is independent — turn off `sessionName` and `timestamps` and you have
-just the footer, or turn off the footer rule and keep the timestamps.
+That is the entire surface. Nothing about the footer's content is configurable
+from here — that is `RULE.md`'s job, and it is a text file you can edit.
 
 ## A simpler footer
 
@@ -152,6 +129,12 @@ assert the theme catalog, the sha256 selection, and every rule line still match
 it byte for byte — otherwise an upgrade would silently change the visual
 identity of every existing session.
 
+The suite imports the `.ts` sources through the same jiti loader pi uses, and
+jiti ships inside pi rather than being a dependency here. `test/jiti.mjs` finds
+it at run time — a local install, `~/.pi/pkg/pi-*` newest-first, or the pi that
+this repo's peer deps are symlinked to — so a pi upgrade cannot strand the
+tests. `PI_JITI=/path/to/jiti.mjs` overrides the search.
+
 ## Prior art
 
 The pi ecosystem has adjacent things worth knowing about, none of which do this:
@@ -162,7 +145,9 @@ The pi ecosystem has adjacent things worth knowing about, none of which do this:
   — transcript timestamps, all TUI-only.
 - [`pi-session-summary`](https://www.npmjs.com/package/pi-session-summary),
   [`@tmustier/pi-session-recap`](https://www.npmjs.com/package/@tmustier/pi-session-recap)
-  — session summaries, generated with an extra model call.
+  — session summaries, generated with an extra model call. This package
+  deliberately does not name sessions; pair it with one of these if you want
+  that.
 - The various `pi-footer` / statusline packages — those are the TUI status bar
   below the editor, not text in the response.
 

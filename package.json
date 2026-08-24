@@ -1,7 +1,7 @@
 {
   "name": "pi-recap-footer",
   "version": "0.1.0",
-  "description": "Every assistant response ends with a recap footer: a stable per-session rule, a one-line summary of what you asked, a link list, and the true request timestamp. Also names the session from that summary and stamps the transcript.",
+  "description": "Every assistant response ends with a recap footer: a stable per-session emoji rule, a one-line summary of what you asked, a link list, and when the answer landed.",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -10,7 +10,6 @@
     "pi-coding-agent",
     "footer",
     "recap",
-    "session-name",
     "timestamps"
   ],
   "pi": {

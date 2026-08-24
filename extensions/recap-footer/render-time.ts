@@ -32,10 +32,14 @@ export function formatDuration(ms: number): string {
 
 export interface RewriteOptions {
 	renderedAt: Date;
-	/** Milliseconds from the user's submit to this message finalising. */
+	/**
+	 * Milliseconds from the user's submit to this message finalising. Omitted
+	 * when the turn's start is unknown — a resumed session whose
+	 * `before_agent_start` never fired — and then the parenthetical is dropped
+	 * rather than guessed at.
+	 */
 	durationMs?: number;
 	timeZone?: string;
-	showDuration?: boolean;
 }
 
 /**
@@ -58,9 +62,9 @@ export function rewriteFooterTimestamp(
 
 		const stamp = formatStamp(options.renderedAt, options.timeZone);
 		const worked =
-			options.showDuration !== false && options.durationMs !== undefined
-				? formatDuration(options.durationMs)
-				: "";
+			options.durationMs === undefined
+				? ""
+				: formatDuration(options.durationMs);
 		lines[i] = worked ? `\`${stamp}\` _(worked for ${worked})_` : `\`${stamp}\``;
 		return lines.join("\n");
 	}
@@ -83,6 +87,11 @@ function textOf(content: unknown): string {
 }
 
 /**
+ * The footer's closing timestamp is always **when the answer landed**, with how
+ * long the turn took. There is deliberately no "when you asked" mode: the
+ * duration already says how far back the request was, so one definition covers
+ * both readings and nothing has to be configured to understand the line.
+ *
  * Rewrites at `message_end` rather than in the markdown transformer.
  *
  * The transformer re-runs on every terminal resize, so computing "now" there
@@ -102,7 +111,6 @@ export function registerRenderTime(
 
 	pi.on("message_end", (event) => {
 		const config = getConfig();
-		if (config.timestamp.mode !== "render") return;
 		if (event.message.role !== "assistant") return;
 
 		const original = textOf(event.message.content);
@@ -114,7 +122,6 @@ export function registerRenderTime(
 			durationMs:
 				askedAtMs === undefined ? undefined : renderedAtMs - askedAtMs,
 			timeZone: config.timeZone,
-			showDuration: config.timestamp.showDuration,
 		});
 		// Only the final message of a turn carries a footer; tool-calling
 		// assistant messages come back unchanged and are left alone.
