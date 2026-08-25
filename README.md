@@ -5,7 +5,7 @@ Every assistant response ends with a recap footer:
 ```
 🐛🦋🐝🐞🐜🦗🪲🪳🦟🐌🐛🦋🐝🐞🐜🦗🪲🪳🦟🐌🐛🦋🐝🐞🐜🦗🪲🪳🦟🐌🐛🦋🐝🐞🐜🦗🪲🪳🦟🐌
 
-_`You asked how to view GitHub versions of Meteorite PRs and add reviewers.`_
+_`You asked how to normalize unit strings in the taxonomy importer.`_
 
 - `PR` [repo#7697](https://github.com/example/repo/pull/7697) — Trim normalization.
 - `Issue` [repo#412](https://github.com/example/repo/issues/412) — Flaky checkout test on CI.
@@ -19,40 +19,35 @@ what can I click?" without scrolling up.
 
 ## What it does
 
-One thing. A `<recap-footer-context>` block is injected at the start of every
-turn with four values the model uses verbatim: a formatted timestamp, the
-request text, the session's theme, and a ready-to-paste rule line. It is
-`display: false`, so the first visible appearance of the footer is the final
-response — no tool call, no spoiler in the transcript.
+A `<recap-footer-context>` block is injected at the start of every turn with
+four values the model uses verbatim: a formatted timestamp, the request text,
+the session's theme, and a ready-to-paste rule line. It is `display: false`, so
+the first visible appearance of the footer is the final response — no tool call,
+no spoiler in the transcript.
 
-That is the whole feature set, deliberately. Session naming and transcript
-timestamps used to live here too; both were removed rather than left switched
-off. Naming belongs to whichever extension you already use for it, and the
-footer's own stamp already tells you when a turn happened.
+That is the whole extension. It supplies the data; [`RULE.md`](RULE.md) tells
+the model what to do with it.
 
 ## The timestamp
 
-It is **when the answer landed**, with how long the turn took — measured from
-your submit to the message finalising:
+**When the answer landed**, with how long the turn took — measured from your
+submit to the message finalising:
 
 ```
 `Thu Aug 6, 2026 · 4:47 PM EDT` _(worked for 3m 24s)_
 ```
 
-One definition, no modes. "When you asked" needs no separate setting because the
-duration already says how far back the request was, and a single fixed meaning is
-worth more than a configurable one on a line you read at a glance months later.
-Local time, never UTC, never relative.
+One meaning, nothing to configure. Local time, never UTC, never relative.
 
 The model cannot know either value while it is writing, so the extension
 rewrites the line at `message_end` — once, persistently. Not in the markdown
 transformer: that re-runs on every terminal resize, which would make "now" jump
 each time you changed the window size.
 
-The stamp the model is handed is the *request* time, read from the pi session
+The stamp handed to the model is the *request* time, read from the pi session
 JSONL. You normally never see it, since the rewrite replaces it — it is the
-fallback for harnesses where the extension is not running, and it is why the
-line is still correct (if duration-less) when a session is resumed months later.
+fallback for harnesses where the extension is not running, and it keeps the line
+correct (if duration-less) in a session resumed months later.
 
 ## Why the theme is stable
 
@@ -64,6 +59,12 @@ collisions are expected.
 Every glyph avoids U+FE0F variation selectors, ZWJ sequences, and text-default
 presentation, so rows never render ragged. `trains` re-randomizes its cars on
 every render.
+
+## Changing the rule
+
+If two windows end up with the same rule, run `/footer-shuffle` in one of them.
+It picks a different rule and keeps it for the rest of the session, including
+after a resume.
 
 ## Full-width rules
 
@@ -80,13 +81,18 @@ corrupt the thing being shown. Rows are identified by rebuilding each candidate
 line at its observed length and comparing — set membership would be ambiguous,
 since themes share glyphs (`🌭` is in both `hotdogs` and `junkfood`).
 
-Run `/footer-themes` to preview the catalog, `/footer-stamp` to see the current
-session's values.
+## Commands
+
+| Command | |
+|---|---|
+| `/footer-shuffle` | Give this session a different rule. |
+| `/footer-themes [filter]` | Preview the theme catalog. |
+| `/footer-stamp` | Show this session's stamp, theme and rule. |
 
 ## Install
 
 ```bash
-pi install git:github.com/<you>/pi-recap-footer
+pi install git:github.com/jeffjeffjeffrey/pi-recap-footer
 ```
 
 Then either set `injectRule: true` (below) or paste [`RULE.md`](RULE.md) into
@@ -145,9 +151,7 @@ The pi ecosystem has adjacent things worth knowing about, none of which do this:
   — transcript timestamps, all TUI-only.
 - [`pi-session-summary`](https://www.npmjs.com/package/pi-session-summary),
   [`@tmustier/pi-session-recap`](https://www.npmjs.com/package/@tmustier/pi-session-recap)
-  — session summaries, generated with an extra model call. This package
-  deliberately does not name sessions; pair it with one of these if you want
-  that.
+  — session summaries and session naming, generated with an extra model call.
 - The various `pi-footer` / statusline packages — those are the TUI status bar
   below the editor, not text in the response.
 

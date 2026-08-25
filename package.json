@@ -4,13 +4,23 @@
   "description": "Every assistant response ends with a recap footer: a stable per-session emoji rule, a one-line summary of what you asked, a link list, and when the answer landed.",
   "type": "module",
   "license": "MIT",
+  "author": "Jeff Doker (https://github.com/jeffjeffjeffrey)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeffjeffjeffrey/pi-recap-footer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jeffjeffjeffrey/pi-recap-footer/issues"
+  },
+  "homepage": "https://github.com/jeffjeffjeffrey/pi-recap-footer#readme",
   "keywords": [
     "pi-package",
     "pi-extension",
     "pi-coding-agent",
     "footer",
     "recap",
-    "timestamps"
+    "timestamp",
+    "session"
   ],
   "pi": {
     "extensions": [
@@ -20,7 +30,8 @@
   "files": [
     "extensions",
     "RULE.md",
-    "README.md"
+    "README.md",
+    "THEMES.md"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

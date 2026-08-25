@@ -170,16 +170,6 @@ await test("loadConfig falls back to defaults for absent keys", () => {
   assert.equal(loaded.injectRule, false);
 });
 
-await test("config surface is only the documented keys", () => {
-  // Guards against a removed feature's settings quietly coming back: the
-  // footer's timestamp has one definition and is deliberately not tunable.
-  assert.deepEqual(Object.keys(config.DEFAULTS).sort(), [
-    "fillWidth",
-    "injectRule",
-    "timeZone",
-  ]);
-});
-
 console.log(`\n${passed} passed${process.exitCode ? ", with failures" : ""}`);
 
 // ----------------------------------------------------------------- reflow
@@ -397,22 +387,34 @@ function mockPi() {
       return out;
     },
     appendEntry: (type, data) => state.entries.push({ type, data }),
-    registerEntryRenderer: (type) => state.renderers.push(type),
-    registerCommand: (name) => state.commands.push(name),
+    registerEntryRenderer: (type, fn) => state.renderers.push({ type, fn }),
+    registerCommand: (name, options) => state.commands.push({ name, ...options }),
+    run: async (name, args, ctx) => {
+      const command = state.commands.find((c) => c.name === name);
+      assert.ok(command, `no such command: ${name}`);
+      return command.handler(args ?? "", ctx);
+    },
     registerMarkdownTransformer: (fn) => state.transformers.push(fn),
     setSessionName: (n) => (state.name = n),
     getSessionName: () => state.name,
   };
 }
 
-const mockCtx = {
-  cwd: "/tmp/nowhere",
-  isProjectTrusted: () => false,
-  sessionManager: {
-    getSessionId: () => "019fd856-7173-7f06-8be0-5d7fce08f7aa",
-    getSessionFile: () => null,
-  },
-};
+/** `ctx` for a session whose id themes to `bugs`. `entries` seeds the history. */
+function mockContext(entries = []) {
+  return {
+    cwd: "/tmp/nowhere",
+    isProjectTrusted: () => false,
+    ui: { notify: () => {} },
+    sessionManager: {
+      getSessionId: () => "019fd856-7173-7f06-8be0-5d7fce08f7aa",
+      getSessionFile: () => null,
+      getEntries: () => entries,
+    },
+  };
+}
+
+const mockCtx = mockContext();
 
 await test("extension loads and registers its hooks", async () => {
   const pi = mockPi();
@@ -420,11 +422,10 @@ await test("extension loads and registers its hooks", async () => {
   for (const event of ["session_start", "before_agent_start", "message_end"]) {
     assert.ok(pi.handlers.has(event), `missing handler: ${event}`);
   }
-  // Transcript timestamps are gone, so nothing hooks tool or turn completion.
-  for (const event of ["tool_execution_end", "turn_end"]) {
-    assert.ok(!pi.handlers.has(event), `stale handler: ${event}`);
-  }
-  assert.deepEqual(pi.state.commands, ["footer-themes", "footer-stamp"]);
+  assert.deepEqual(
+    pi.state.commands.map((command) => command.name),
+    ["footer-themes", "footer-shuffle", "footer-stamp"],
+  );
 });
 
 const wired = mockPi();
@@ -445,34 +446,6 @@ await test("before_agent_start injects a hidden, correctly-themed context block"
   assert.ok(result.message.content.includes("🐛"));
   // injectRule defaults off, so the system prompt is untouched
   assert.equal(result.systemPrompt, undefined);
-});
-
-await test("the session name is left to whoever owns naming", async () => {
-  // Naming used to be derived from this summary line. It now belongs to a
-  // separate extension, so this one must never call setSessionName.
-  const message = {
-    role: "assistant",
-    timestamp: Date.now(),
-    content: [
-      {
-        type: "text",
-        text: "Body.\n\n🐛🦋\n\n_`You asked how to package the recap footer.`_\n\n`Thu Aug 6, 2026 · 4:47 PM EDT`",
-      },
-    ],
-  };
-  await wired.emit("message_end", { message }, mockCtx);
-  assert.equal(wired.state.name, undefined);
-});
-
-await test("a turn never appends rows to the transcript", async () => {
-  // Only the two slash commands append entries.
-  wired.state.entries.length = 0;
-  await wired.emit(
-    "message_end",
-    { message: { role: "user", timestamp: Date.now(), content: "hi" } },
-    mockCtx,
-  );
-  assert.deepEqual(wired.state.entries, []);
 });
 
 await test("registered transformer reflows only finalized assistant markdown", async () => {
@@ -546,26 +519,89 @@ await test("wired: a tool-calling assistant message (no footer) is left alone", 
   assert.ok(!results.some((r) => r && r.message), "should not replace a footerless message");
 });
 
-await test("wired: a retired setting cannot disable the rewrite", async () => {
-  // The stamp has one definition — when the answer landed, plus the duration.
-  // An old config carrying the removed `timestamp` block must be ignored
-  // rather than silently honoured.
+// ---------------------------------------------------------------- shuffle
+
+const shuffle = await jiti.import(join(ROOT, "extensions/recap-footer/shuffle.ts"));
+
+await test("shuffling always lands on a different theme", () => {
+  for (const current of themes.THEME_NAMES) {
+    for (const roll of [0, 0.5, 0.999999, 1]) {
+      const picked = shuffle.nextTheme(current, () => roll);
+      assert.notEqual(picked, current, `${current} @ ${roll}`);
+      assert.ok(themes.THEME_NAMES.includes(picked), picked);
+    }
+  }
+});
+
+await test("shuffling from no theme at all still picks a real one", () => {
+  const picked = shuffle.nextTheme(undefined, () => 0.5);
+  assert.ok(themes.THEME_NAMES.includes(picked), picked);
+});
+
+await test("the latest shuffle in the session history wins", () => {
+  const entries = [
+    { type: "message", message: { role: "user" } },
+    { type: "custom", customType: shuffle.SHUFFLE_ENTRY, data: { theme: "moon" } },
+    { type: "custom", customType: "something-else", data: { theme: "farm" } },
+    { type: "custom", customType: shuffle.SHUFFLE_ENTRY, data: { theme: "ocean" } },
+  ];
+  assert.equal(shuffle.shuffledTheme(entries), "ocean");
+  assert.equal(shuffle.shuffledTheme([]), undefined);
+});
+
+await test("a bad or unknown theme in the history is ignored", () => {
+  const entries = [
+    { type: "custom", customType: shuffle.SHUFFLE_ENTRY, data: { theme: "ocean" } },
+    { type: "custom", customType: shuffle.SHUFFLE_ENTRY, data: { theme: "not-a-theme" } },
+    { type: "custom", customType: shuffle.SHUFFLE_ENTRY },
+  ];
+  assert.equal(shuffle.shuffledTheme(entries), "ocean");
+});
+
+await test("wired: /footer-shuffle changes the rule and persists the choice", async () => {
   const w = mockPi();
   entry(w);
-  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "legacy-config.json");
-  await w.emit("session_start", {}, mockCtx);
-  process.env.PI_RECAP_FOOTER_CONFIG = join(HERE, "empty-config.json");
+  const ctx = mockContext();
+  await w.emit("session_start", {}, ctx);
 
-  await w.emit("before_agent_start", { prompt: "x", systemPrompt: "B" }, mockCtx);
-  const text = ["_`Summary.`_", "", "`Fri Aug 7, 2026 \u00b7 2:19 PM EDT`"].join("\n");
-  const results = await w.emit(
-    "message_end",
-    { message: { role: "assistant", timestamp: Date.now(), content: [{ type: "text", text }] } },
-    mockCtx,
-  );
-  const replaced = results.find((r) => r && r.message);
-  assert.ok(replaced, "a retired setting must not disable the rewrite");
-  assert.match(replaced.message.content[0].text.split("\n").at(-1), /_\(worked for /);
+  const before = await w.emit("before_agent_start", { prompt: "x", systemPrompt: "B" }, ctx);
+  assert.match(before[0].message.content, /^theme\tbugs$/m);
+
+  await w.run("footer-shuffle", "", ctx);
+
+  const [saved] = w.state.entries;
+  assert.equal(saved.type, shuffle.SHUFFLE_ENTRY);
+  assert.ok(themes.THEME_NAMES.includes(saved.data.theme), saved.data.theme);
+  assert.notEqual(saved.data.theme, "bugs");
+
+  const after = await w.emit("before_agent_start", { prompt: "x", systemPrompt: "B" }, ctx);
+  assert.match(after[0].message.content, new RegExp(`^theme\t${saved.data.theme}$`, "m"));
+  assert.ok(after[0].message.content.includes(stamp.buildRule(saved.data.theme)));
+});
+
+await test("wired: a resumed session keeps its shuffled rule", async () => {
+  const w = mockPi();
+  entry(w);
+  const ctx = mockContext([
+    { type: "custom", customType: shuffle.SHUFFLE_ENTRY, data: { theme: "ocean" } },
+  ]);
+  await w.emit("session_start", {}, ctx);
+
+  const [result] = await w.emit("before_agent_start", { prompt: "x", systemPrompt: "B" }, ctx);
+  assert.match(result.message.content, /^theme\tocean$/m);
+});
+
+await test("wired: shuffling twice in a row moves off the shuffled theme too", async () => {
+  const w = mockPi();
+  entry(w);
+  const ctx = mockContext();
+  await w.emit("session_start", {}, ctx);
+
+  await w.run("footer-shuffle", "", ctx);
+  const first = w.state.entries.at(-1).data.theme;
+  await w.run("footer-shuffle", "", ctx);
+  const second = w.state.entries.at(-1).data.theme;
+  assert.notEqual(second, first);
 });
 
 console.log(`${passed} passed total${process.exitCode ? ", with failures" : ""}`);

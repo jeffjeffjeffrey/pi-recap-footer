@@ -8,6 +8,12 @@ import { Text } from "@earendil-works/pi-tui";
 import { type RecapFooterConfig, DEFAULTS, loadConfig } from "./config.js";
 import { registerReflow } from "./reflow.js";
 import { registerRenderTime } from "./render-time.js";
+import {
+	type ShuffleEntry,
+	nextTheme,
+	SHUFFLE_ENTRY,
+	shuffledTheme,
+} from "./shuffle.js";
 import { buildRule, buildStamp, collapse } from "./stamp.js";
 import { THEME_NAMES } from "./themes.js";
 
@@ -25,9 +31,14 @@ function readRule(): string | undefined {
 export default function recapFooter(pi: ExtensionAPI) {
 	let config: RecapFooterConfig = DEFAULTS;
 	const getConfig = () => config;
+	/** Set by `/footer-shuffle`; outranks the config and the derived theme. */
+	let shuffled: string | undefined;
+
+	const themeFor = () => shuffled ?? config.theme;
 
 	pi.on("session_start", (_event, ctx) => {
 		config = loadConfig(ctx.cwd, ctx.isProjectTrusted());
+		shuffled = shuffledTheme(ctx.sessionManager.getEntries());
 	});
 
 	/**
@@ -43,7 +54,7 @@ export default function recapFooter(pi: ExtensionAPI) {
 			ask: event.prompt,
 			cwd: ctx.cwd,
 			timeZone: config.timeZone,
-			theme: config.theme,
+			theme: themeFor(),
 		});
 
 		const lines = [
@@ -90,6 +101,29 @@ ${lines}
 		},
 	});
 
+	pi.registerCommand("footer-shuffle", {
+		description: "Give this session a different rule",
+		handler: async (_args, ctx) => {
+			const current = buildStamp({
+				sessionId: ctx.sessionManager.getSessionId(),
+				cwd: ctx.cwd,
+				theme: themeFor(),
+			}).theme;
+
+			shuffled = nextTheme(current);
+			// Persisted, not just remembered: a resumed session keeps the new rule.
+			pi.appendEntry<ShuffleEntry>(SHUFFLE_ENTRY, { theme: shuffled });
+		},
+	});
+
+	pi.registerEntryRenderer<ShuffleEntry>(
+		SHUFFLE_ENTRY,
+		(entry, _options, theme) =>
+			entry.data?.theme
+				? new Text(theme.fg("dim", buildRule(entry.data.theme)), 1, 0)
+				: undefined,
+	);
+
 	pi.registerCommand("footer-stamp", {
 		description: "Show the current session's footer stamp, theme and rule",
 		handler: async (_args, ctx) => {
@@ -98,7 +132,7 @@ ${lines}
 				sessionFile: ctx.sessionManager.getSessionFile() ?? undefined,
 				cwd: ctx.cwd,
 				timeZone: config.timeZone,
-				theme: config.theme,
+				theme: themeFor(),
 			});
 			pi.appendEntry("recap-footer-themes", {
 				text: [

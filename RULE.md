@@ -64,7 +64,7 @@ the list entirely when nothing linkable exists.
 - Format: `` - `Type` [short-label](url) — Description. ``
 - `Type` in a code span, normal capitalization: `PR`, `Issue`, `Run`, `Commit`,
   `CI`, `Doc`, `Site`, `File`.
-- Short readable label: `ml-taxonomy#7697`, `oasis 019d4fff`, `buildkite #4821`.
+- Short readable label: `acme-api#7697`, `run 019d4fff`, `ci #4821`.
 - Description in normal capitalization ending with a period: the PR/issue title
   (truncate around 45 chars), what a run was attempting, why a doc matters.
 - Most relevant first, cap around 5, then `+N more`.
