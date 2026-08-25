@@ -92,6 +92,8 @@ since themes share glyphs (`🌭` is in both `hotdogs` and `junkfood`).
 ## Install
 
 ```bash
+pi install npm:pi-recap-footer
+# or straight from source
 pi install git:github.com/jeffjeffjeffrey/pi-recap-footer
 ```
 
