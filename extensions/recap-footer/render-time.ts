@@ -71,21 +71,6 @@ export function rewriteFooterTimestamp(
 	return text;
 }
 
-function textOf(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.filter(
-			(block): block is { type: string; text: string } =>
-				typeof block === "object" &&
-				block !== null &&
-				(block as { type?: unknown }).type === "text" &&
-				typeof (block as { text?: unknown }).text === "string",
-		)
-		.map((block) => block.text)
-		.join("\n");
-}
-
 /**
  * The footer's closing timestamp: when the answer landed, plus how long the
  * turn took.
@@ -111,25 +96,24 @@ export function registerRenderTime(
 		const config = getConfig();
 		if (event.message.role !== "assistant") return;
 
-		const original = textOf(event.message.content);
-		if (!original) return;
+		const textIndex = event.message.content.findLastIndex(
+			(block) => block.type === "text" && block.text.trim().length > 0,
+		);
+		const textBlock = event.message.content[textIndex];
+		if (!textBlock || textBlock.type !== "text") return;
 
 		const renderedAtMs = Date.now();
-		const rewritten = rewriteFooterTimestamp(original, {
+		const rewritten = rewriteFooterTimestamp(textBlock.text, {
 			renderedAt: new Date(renderedAtMs),
 			durationMs:
 				askedAtMs === undefined ? undefined : renderedAtMs - askedAtMs,
 			timeZone: config.timeZone,
 		});
-		// Only the final message of a turn carries a footer; tool-calling
-		// assistant messages come back unchanged and are left alone.
-		if (rewritten === original) return;
+		if (rewritten === textBlock.text) return;
 
-		return {
-			message: {
-				...event.message,
-				content: [{ type: "text" as const, text: rewritten }],
-			},
-		};
+		// message_end runs before tool dispatch; pending tool calls must survive.
+		const content = event.message.content.slice();
+		content[textIndex] = { ...textBlock, text: rewritten };
+		return { message: { ...event.message, content } };
 	});
 }

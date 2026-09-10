@@ -513,10 +513,71 @@ await test("wired: a tool-calling assistant message (no footer) is left alone", 
   await w.emit("session_start", {}, mockCtx);
   const results = await w.emit(
     "message_end",
-    { message: { role: "assistant", timestamp: Date.now(), content: [{ type: "text", text: "Let me check that." }] } },
+    { message: { role: "assistant", timestamp: Date.now(), content: [
+      { type: "text", text: "Let me check that." },
+      { type: "toolCall", id: "read-1", name: "read", arguments: { path: "README.md" } },
+    ] } },
     mockCtx,
   );
   assert.ok(!results.some((r) => r && r.message), "should not replace a footerless message");
+});
+
+await test("wired: a footer rewrite preserves tool calls, reasoning, and message metadata", async () => {
+  const w = mockPi();
+  entry(w);
+  await w.emit("session_start", {}, mockCtx);
+  await w.emit("before_agent_start", { prompt: "do a thing", systemPrompt: "BASE" }, mockCtx);
+  const message = {
+    role: "assistant", timestamp: 0, stopReason: "toolUse", rawStopReason: "completed",
+    provider: "openai", model: "gpt-6-astra", api: "openai-responses",
+    responseId: "response-1", usage: { input: 100, output: 50 },
+    content: [
+      { type: "thinking", thinking: "Inspect the files.", thinkingSignature: "reasoning-1" },
+      { type: "text", text: FOOTER, textSignature: "earlier-text" },
+      { type: "toolCall", id: "read-1", name: "read", arguments: { path: "README.md" } },
+      { type: "text", text: FOOTER, textSignature: "footer-text" },
+      { type: "toolCall", id: "bash-1", name: "bash", arguments: { command: "pwd", timeout: 5 } },
+      { type: "text", text: "\n  " },
+    ],
+  };
+  const original = structuredClone(message);
+  const results = await w.emit("message_end", { message }, mockCtx);
+  const updated = results.find((r) => r?.message)?.message;
+  assert.ok(updated, "the footer timestamp should be rewritten even in a tool-calling message");
+  assert.equal(updated.content.length, original.content.length, "all content blocks must survive");
+  assert.notEqual(updated.content[3].text, FOOTER);
+  const expected = structuredClone(original);
+  expected.content[3].text = updated.content[3].text;
+  assert.deepEqual(updated, expected, "only the last nonblank text block may change");
+  assert.deepEqual(message, original, "the input message must not be mutated");
+  for (const i of [0, 1, 2, 4, 5]) assert.equal(updated.content[i], message.content[i]);
+});
+
+await test("wired: a timestamp before later prose is not a closing footer", async () => {
+  const w = mockPi();
+  entry(w);
+  await w.emit("session_start", {}, mockCtx);
+  const results = await w.emit("message_end", { message: {
+    role: "assistant", content: [
+      { type: "text", text: FOOTER },
+      { type: "toolCall", id: "read-1", name: "read", arguments: { path: "README.md" } },
+      { type: "text", text: "More prose after the timestamp." },
+    ],
+  } }, mockCtx);
+  assert.ok(!results.some((r) => r?.message));
+});
+
+await test("wired: messages without nonblank text are left alone", async () => {
+  const w = mockPi();
+  entry(w);
+  await w.emit("session_start", {}, mockCtx);
+  for (const content of [[], [
+    { type: "thinking", thinking: "Inspect the files." },
+    { type: "toolCall", id: "read-1", name: "read", arguments: { path: "README.md" } },
+  ], [{ type: "text", text: "\n  " }]]) {
+    const results = await w.emit("message_end", { message: { role: "assistant", content } }, mockCtx);
+    assert.ok(!results.some((r) => r?.message));
+  }
 });
 
 // ---------------------------------------------------------------- shuffle
