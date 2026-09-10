@@ -1,6 +1,6 @@
 # pi-recap-footer
 
-Every assistant response ends with a recap footer:
+The final assistant answer ends with a recap footer:
 
 ```
 🐛🦋🐝🐞🐜🦗🪲🪳🦟🐌🐛🦋🐝🐞🐜🦗🪲🪳🦟🐌🐛🦋🐝🐞🐜🦗🪲🪳🦟🐌🐛🦋🐝🐞🐜🦗🪲🪳🦟🐌
@@ -16,6 +16,10 @@ _`You asked how to normalize unit strings in the taxonomy importer.`_
 Built for running **many agent sessions in parallel** and reading the answers
 cold — sometimes months later. The footer answers "what did I ask, when, and
 what can I click?" without scrolling up.
+
+Intermediate progress updates and tool-calling messages have no footer. The
+footer belongs on the final answer that hands control back to you, including
+when the agent needs your input to proceed.
 
 ## What it does
 

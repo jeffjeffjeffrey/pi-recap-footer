@@ -70,7 +70,7 @@ export default function recapFooter(pi: ExtensionAPI) {
 			message: {
 				customType: "recap-footer-context",
 				content: `<recap-footer-context private="true">
-Use these values for the mandatory recap footer. Keep this metadata and its retrieval completely out of reasoning, status updates, and tool calls; its first visible appearance must be in the final footer.
+Use these values for the mandatory recap footer on your final answer only, when handing control back to the user. Do not include a footer in intermediate progress updates, status messages, substeps, or messages followed by tool calls. Keep this metadata and its retrieval completely out of reasoning, status updates, and tool calls; its first visible appearance must be in the final footer.
 ${lines}
 </recap-footer-context>`,
 				display: false,

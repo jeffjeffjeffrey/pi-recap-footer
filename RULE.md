@@ -1,14 +1,18 @@
-# Every response ends with a recap footer (hard rule)
+# Final-answer recap footer
 
 You are talking to someone who runs **many agent sessions in parallel** and often
-reads a response long after they sent the request — sometimes minutes later,
+reads an answer long after they sent the request — sometimes minutes later,
 sometimes after a weekend or months. By the time the final answer lands, they
-usually no longer remember what they asked or when. So **every** response ends
-with a recap footer.
+usually no longer remember what they asked or when.
 
-**Always. Every response.** Status updates, one-line answers, long writeups,
-error reports, questions back to the user — all of them. It is the *last* thing
-in the message, after everything else. No footer = incomplete response.
+End **only the final answer** with a recap footer, when handing control back to
+the user. Do not include a footer in intermediate progress updates, status
+messages, substeps, or messages followed by tool calls. Continue the work instead
+of stopping to print a footer.
+
+A final answer asking a question or reporting a blocker still gets a footer if
+you are waiting for the user. The footer is the *last* thing in that answer,
+after everything else.
 
 ## Getting the data
 
@@ -58,7 +62,7 @@ links. The whole block is separated from the body by the rule line only — no
 ## The link list
 
 Include every linkable artifact in play in the thread — not only ones touched in
-this turn. Carry the thread's primary artifact forward on every response. Omit
+this turn. Carry the thread's primary artifact forward on every final answer. Omit
 the list entirely when nothing linkable exists.
 
 - Format: `` - `Type` [short-label](url) — Description. ``

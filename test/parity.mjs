@@ -440,6 +440,8 @@ await test("before_agent_start injects a hidden, correctly-themed context block"
   );
   assert.equal(result.message.display, false);
   assert.equal(result.message.customType, "recap-footer-context");
+  assert.match(result.message.content, /final answer only, when handing control back to the user/);
+  assert.match(result.message.content, /Do not include a footer in intermediate progress updates/);
   assert.match(result.message.content, /^stamp\t.+$/m);
   assert.match(result.message.content, /^theme\tbugs$/m);
   assert.match(result.message.content, /^ask\thow do I package this\?$/m);

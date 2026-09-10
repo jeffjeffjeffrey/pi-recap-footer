@@ -1,7 +1,7 @@
 {
   "name": "pi-recap-footer",
   "version": "0.1.0",
-  "description": "Every assistant response ends with a recap footer: a stable per-session emoji rule, a one-line summary of what you asked, a link list, and when the answer landed.",
+  "description": "Final assistant answers end with a recap footer: a stable per-session emoji rule, a one-line summary of what you asked, a link list, and when the answer landed.",
   "type": "module",
   "license": "MIT",
   "author": "Jeff Doker (https://github.com/jeffjeffjeffrey)",
